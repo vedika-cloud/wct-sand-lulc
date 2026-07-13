@@ -1,0 +1,74 @@
+---
+title: "c-rb-classification"
+author: "vk"
+date: "2026-04-13"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r libraries}
+library(terra)
+library(rpart)
+library(rpart.plot)
+library(ggplot2)
+library(dplyr)
+library(tidyverse)
+library(tree)
+```
+
+```{r reading in data and processing}
+df <- read.csv('/Users/your path') ##put in your path to file here (data should be the training points with spectral sig)
+df <- df%>%
+  select(-".geo", -"system.index")
+df$class <- factor(df$class,
+                        levels = c(1,2,3,4,5,6),
+                    labels = c("Fresh Sand", "Sand Mining", "Wet Sand", "Fallow", "Veg Sand", "Bedrock"))
+```
+```{r plotting spectral signature}
+long <- pivot_longer(df, cols = -class, names_to = "band", values_to = "reflectance")
+sand_summary <- long%>%
+  group_by(class, band)%>%
+  summarise(mean_reflectance = mean(reflectance), .groups = "drop")
+
+ggplot(sand_summary, aes(x = band, y = mean_reflectance, color = class, group = class))+
+  geom_line()+
+  theme_minimal()+
+  labs(title = "Spectral Signatures of Sand")+
+  scale_color_discrete(labels = c("1" = "fresh alluv", "2" = "sandmine", "3" = "wet sand", "4" = "fallow", "5" = "veg sand", "6" = "rock"))
+
+```
+#########################################
+
+model <- tree(class~ B11 + B12 + B2 + B3 + B4 + B8 + NDBI + NDMI + MNDWI + NDVI + BCI + contrast 
+                      + correlation + dissimilarity + entropy + homogeneity + variance + asm +
+                            NDSI, data = df)
+plot(model)
+text(model, pretty = 0, cex = 0.6)
+cv <- cv.tree(model, FUN = prune.misclass)
+cv
+
+summary(model)
+plot(cv$size,
+     cv$dev,
+     type = "b",
+     xlab = "Tree Size",
+     ylab = "CV Misclassification Error")
+
+pruned <- prune.misclass(model, best = 6)
+
+plot(pruned)
+text(pruned, pretty = 0, cex = 0.7)
+title("Classification and Regression Tree",
+      col.main = "grey10",
+      font.main = 2,
+      cex.main = 0.9,
+      adj = 0.6)
+summary(pruned)
+max_depth <- max(floor(log2(as.integer(rownames(pruned$frame)))))
+print(max_depth)
+print(pruned)
+
+#Use the CART analysis to understand basis of classification
